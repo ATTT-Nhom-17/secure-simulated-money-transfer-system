@@ -3,7 +3,7 @@ import time
 import base64
 
 from cryptography.exceptions import InvalidTag
-import crypto_utils_v2 as cu
+import crypto_utils as cu
 
 
 def check(label, ok):
