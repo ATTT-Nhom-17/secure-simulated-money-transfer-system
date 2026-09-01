@@ -27,6 +27,7 @@ Open the URL shown by Vite. Demo login:
 
 - Username: `user1`
 - Password: `123456`
+- Transfer PIN: `123456`
 
 ## 3. Connect to the real FastAPI backend
 
