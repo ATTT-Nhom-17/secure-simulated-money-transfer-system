@@ -9,6 +9,7 @@ export default function Transfer() {
     receiver: "",
     amount: "",
     description: "",
+    pin: "",
   });
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
@@ -17,11 +18,15 @@ export default function Transfer() {
     e.preventDefault();
     setError("");
     setResult(null);
+    if (!/^\d{6}$/.test(form.pin)) {
+      setError("Enter your 6-digit transfer PIN.");
+      return;
+    }
     setLoading(true);
     try {
       const res = await transfer({ ...form, amount: Number(form.amount) });
       setResult(res);
-      setForm({ receiver: "", amount: "", description: "" });
+      setForm({ receiver: "", amount: "", description: "", pin: "" });
     } catch (err) {
       setError(err.message || "Transfer failed.");
     } finally {
@@ -83,6 +88,25 @@ export default function Transfer() {
               value={form.description}
               onChange={(e) =>
                 setForm({ ...form, description: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            Transfer PIN
+            <input
+              required
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength="6"
+              pattern="[0-9]{6}"
+              placeholder="6-digit PIN"
+              value={form.pin}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  pin: e.target.value.replace(/\D/g, "").slice(0, 6),
+                })
               }
             />
           </label>
