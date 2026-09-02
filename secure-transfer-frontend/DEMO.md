@@ -5,7 +5,7 @@
 1. Login with `user1 / 123456`.
 2. Show current balance.
 3. Open Transfer.
-4. 4. Enter transfer PIN `123456` and send `500000 VND` to `user2`.
+4. Enter transfer PIN `123456` and send `500000 VND` to `user2`.
 5. Show `SUCCESS` and the generated transaction ID.
 6. Open Transaction Detail.
 7. Show SHA-256, RSA signature, nonce/timestamp, and replay-protection status.
