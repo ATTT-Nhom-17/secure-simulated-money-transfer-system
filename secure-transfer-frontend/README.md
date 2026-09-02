@@ -27,6 +27,7 @@ Open the URL shown by Vite. Demo login:
 
 - Username: `user1`
 - Password: `123456`
+- transfer PIN: `123456`
 
 ## 3. Connect to the real FastAPI backend
 
@@ -48,6 +49,7 @@ The frontend expects these endpoints:
 - `GET /transactions/{transaction_id}`
 
 The login response should provide `access_token`. The frontend sends it as a Bearer token.
+Transfer requests also include a six-digit `pin` field, which the backend must validate before creating the transaction.
 
 ## 4. Security fields shown by the UI
 
