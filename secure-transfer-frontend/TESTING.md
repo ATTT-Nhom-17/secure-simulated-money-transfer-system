@@ -15,3 +15,4 @@
 | T11 | Modify signed amount in a captured request | RSA verification should fail | ☐ |
 | T12 | Replay the same request/nonce | Replay should be blocked | ☐ |
 | T13 | Confirm encrypted balance is not stored as plaintext | AES ciphertext in DB | ☐ |
+| T14 | Transfer with an invalid or missing PIN | Transaction rejected | ☐ |
