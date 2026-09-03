@@ -10,6 +10,8 @@ export default function Register() {
     email: "",
     password: "",
     confirmPassword: "",
+    pin: "",
+    confirmPin: "",
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -21,6 +23,10 @@ export default function Register() {
     setMessage("");
     if (form.password !== form.confirmPassword)
       return setError("Passwords do not match.");
+    if (!/^\d{6}$/.test(form.pin))
+      return setError("Transfer PIN must be exactly 6 digits.");
+    if (form.pin !== form.confirmPin)
+      return setError("PINs do not match.");
     setLoading(true);
     try {
       const res = await register(form);
@@ -75,6 +81,41 @@ export default function Register() {
               value={form.confirmPassword}
               onChange={(e) =>
                 setForm({ ...form, confirmPassword: e.target.value })
+              }
+            />
+          </label>
+                    <label>
+            Transfer PIN
+            <input
+              required
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength="6"
+              pattern="[0-9]{6}"
+              placeholder="6-digit PIN"
+              value={form.pin}
+              onChange={(e) =>
+                setForm({ ...form, pin: e.target.value.replace(/\D/g, "").slice(0, 6) })
+              }
+            />
+          </label>
+          <label>
+            Confirm PIN
+            <input
+              required
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength="6"
+              pattern="[0-9]{6}"
+              placeholder="Re-enter PIN"
+              value={form.confirmPin}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  confirmPin: e.target.value.replace(/\D/g, "").slice(0, 6),
+                })
               }
             />
           </label>

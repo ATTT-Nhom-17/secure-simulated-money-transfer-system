@@ -54,7 +54,7 @@ export default function Login() {
           Demo account: <strong>user1</strong> / <strong>123456</strong>
         </div>
         <p className="auth-switch">
-          CHưa có tài khoản? <Link to="/register">Đăng ký</Link>
+          Chưa có tài khoản? <Link to="/register">Đăng ký</Link>
         </p>
       </div>
     </div>

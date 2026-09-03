@@ -86,7 +86,12 @@ function saveMock(state) {
 }
 
 export async function login(credentials) {
-  if (!USE_MOCK) return (await client.post("/login", credentials)).data;
+  if (!USE_MOCK) {
+    const data = (await client.post("/login", credentials)).data;
+    localStorage.setItem("token", data.access_token);
+    localStorage.setItem("user", JSON.stringify({ username: data.username }));
+    return data;
+  }
   await delay();
   if (!credentials.username || !credentials.password)
     throw new Error("Username and password are required.");
@@ -198,3 +203,11 @@ export function isLoggedIn() {
   return Boolean(localStorage.getItem("token"));
 }
 
+client.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const detail = err.response?.data?.detail;
+    if (detail) err.message = detail;
+    return Promise.reject(err);
+  }
+);
