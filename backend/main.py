@@ -15,13 +15,13 @@ from config import SERVER_BALANCE_KEY
 from database import get_db
 from schemas import (
     RegisterRequest, LoginRequest, TokenResponse, UserResponse,
-    AccountResponse, BalanceResponse, TransferRequest, TransactionResponse, TransactionListResponse
+    AccountResponse, BalanceResponse, TransferRequest, SignedTransferRequest, TransactionResponse, TransactionListResponse
 )
 from auth import (
     router as auth_router, register as auth_register, login as auth_login,
     get_me as auth_get_me, get_current_user, get_user_balance
 )
-from transactions import router as transactions_router, transfer as tx_transfer, get_history as tx_get_history, get_transaction_detail as tx_get_detail
+from transactions import router as transactions_router, transfer as tx_transfer, transfer_signed as tx_transfer_signed, get_history as tx_get_history, get_transaction_detail as tx_get_detail
 
 
 @asynccontextmanager
@@ -89,6 +89,11 @@ def root_balance(current_user=Depends(get_current_user), conn=Depends(get_db)):
 @app.post("/transfer", response_model=TransactionResponse, tags=["compatibility"])
 def root_transfer(req: TransferRequest, current_user=Depends(get_current_user), conn=Depends(get_db)):
     return tx_transfer(req, current_user, conn)
+
+
+@app.post("/transfer-signed", response_model=TransactionResponse, tags=["compatibility"])
+def root_transfer_signed(req: SignedTransferRequest, current_user=Depends(get_current_user), conn=Depends(get_db)):
+    return tx_transfer_signed(req, current_user, conn)
 
 
 @app.get("/transactions", response_model=TransactionListResponse, tags=["compatibility"])

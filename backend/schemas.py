@@ -27,6 +27,7 @@ class UserResponse(BaseModel):
     username: str
     email: Optional[str] = None
     balance: int
+    private_key_pem: Optional[str] = None  # tra ve 1 LAN DUY NHAT luc dang ky de client tu giu va tu ky sau nay
 
 
 class AccountResponse(BaseModel):
@@ -46,6 +47,32 @@ class TransferRequest(BaseModel):
     receiver: Optional[str] = None
     amount: int
     pin: str = Field(default="123456", description="Mã PIN 6 chữ số")
+    description: Optional[str] = ""
+
+    @model_validator(mode="after")
+    def populate_receiver(self):
+        target = self.receiver_username or self.receiver
+        if not target:
+            raise ValueError("Người nhận (receiver) không được để trống")
+        self.receiver_username = target
+        self.receiver = target
+        return self
+
+
+class SignedTransferRequest(BaseModel):
+    # Dung cho luong bao mat day du: CLIENT tu tao transaction_id/nonce/timestamp,
+    # tu hash va tu KY (bang private key CHI CLIENT giu) TRUOC KHI goi API.
+    # Server chi VERIFY, khong tu sinh lai cac field nay - nen neu attacker sua
+    # amount tren duong truyen (MITM) thi data_hash/signature cu se khong con khop.
+    transaction_id: str
+    receiver_username: Optional[str] = None
+    receiver: Optional[str] = None
+    amount: int
+    nonce: str
+    timestamp: float
+    data_hash: str
+    signature: str
+    pin: str = Field(default="123456")
     description: Optional[str] = ""
 
     @model_validator(mode="after")

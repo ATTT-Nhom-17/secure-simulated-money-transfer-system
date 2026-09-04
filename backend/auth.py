@@ -43,7 +43,8 @@ def register(req: RegisterRequest, conn=Depends(get_db)):
     enc = cu.aes_encrypt(SERVER_BALANCE_KEY, str(initial_balance).encode())
     db.create_account(conn, user_id, enc["nonce"], enc["ciphertext"])
 
-    return UserResponse(id=user_id, username=req.username, email=req.email, balance=initial_balance)
+    return UserResponse(id=user_id, username=req.username, email=req.email, balance=initial_balance,
+                        private_key_pem=private_pem)
 
 
 @router.post("/login", response_model=TokenResponse)

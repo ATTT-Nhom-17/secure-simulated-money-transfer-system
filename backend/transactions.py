@@ -11,7 +11,7 @@ import db
 import crypto_utils as cu
 from database import get_db
 from config import SERVER_BALANCE_KEY
-from schemas import TransferRequest, TransactionResponse, TransactionListResponse
+from schemas import TransferRequest, SignedTransferRequest, TransactionResponse, TransactionListResponse
 from auth import get_current_user, get_user_balance
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -89,6 +89,79 @@ def transfer(req: TransferRequest, current_user=Depends(get_current_user), conn=
         hash_valid=True,
         replay_detected=False,
         hash=payload["data_hash"],
+    )
+
+
+@router.post("/transfer-signed", response_model=TransactionResponse)
+def transfer_signed(req: SignedTransferRequest, current_user=Depends(get_current_user), conn=Depends(get_db)):
+    # Luong bao mat day du: CLIENT da tu tao transaction_id/nonce/timestamp/data_hash/signature
+    # va ky bang private key CHI CLIENT giu (server KHONG tu sinh lai cac gia tri nay).
+    # => Neu MITM sua "amount" tren duong truyen, data_hash/signature cu (tinh tren amount that)
+    #    se khong con khop -> verify_transaction_payload() phat hien va tu choi ngay tai buoc 1.
+    # => Neu attacker bat lai va gui lai (replay) nguyen request cu, nonce da duoc DBNonceTracker
+    #    danh dau "da dung" tu lan dau -> bi tu choi, KHONG tao them giao dich moi.
+    if req.receiver_username == current_user["username"]:
+        raise HTTPException(status_code=400, detail="Không thể tự chuyển tiền cho chính mình")
+    if req.amount <= 0:
+        raise HTTPException(status_code=400, detail="Số tiền chuyển phải lớn hơn 0")
+
+    receiver = db.get_user_by_username(conn, req.receiver_username)
+    if not receiver:
+        raise HTTPException(status_code=404, detail="Người nhận không tồn tại")
+
+    payload = {
+        "transaction_id": req.transaction_id,
+        "sender_id": current_user["id"],
+        "receiver_id": receiver["id"],
+        "amount": req.amount,
+        "nonce": req.nonce,
+        "timestamp": req.timestamp,
+        "data_hash": req.data_hash,
+        "signature": req.signature,
+    }
+
+    # 1. VERIFY TRUOC TIEN - dung nguyen payload client gui, khong sua/khong tu sinh lai gi ca
+    tracker = db.DBNonceTracker(conn)
+    try:
+        cu.verify_transaction_payload(payload, current_user["public_key_pem"], tracker)
+    except cu.TransactionError as e:
+        # Neu transaction_id nay DA TON TAI trong DB (vi du: bi replay - gui lai
+        # y nguyen payload da thanh cong truoc do), khong insert de vi pham UNIQUE
+        # constraint - chi tra loi 400 cho client, ban ghi goc van giu nguyen lam
+        # bang chung kiem tra.
+        existing = conn.execute(
+            "SELECT status FROM transactions WHERE transaction_id = ?", (payload["transaction_id"],)
+        ).fetchone()
+        if not existing:
+            db.insert_transaction(conn, payload, status="rejected", reject_reason=str(e), description=req.description)
+        raise HTTPException(status_code=400, detail=f"Xác minh giao dịch thất bại: {str(e)}")
+
+    # 2. Chi sau khi verify PASS moi kiem tra nghiep vu (PIN, so du)
+    if not current_user["pin_hash"] or not cu.verify_password(req.pin, current_user["pin_hash"]):
+        raise HTTPException(status_code=400, detail="Mã PIN không chính xác")
+
+    sender_balance = get_user_balance(conn, current_user["id"])
+    if sender_balance < req.amount:
+        raise HTTPException(status_code=400, detail="Số dư không đủ để thực hiện giao dịch")
+
+    # 3. Da hop le hoan toan - moi thuc su tru/cong tien
+    new_sender_balance = sender_balance - req.amount
+    enc_sender = cu.aes_encrypt(SERVER_BALANCE_KEY, str(new_sender_balance).encode())
+    db.update_balance(conn, current_user["id"], enc_sender["nonce"], enc_sender["ciphertext"])
+
+    receiver_balance = get_user_balance(conn, receiver["id"])
+    new_receiver_balance = receiver_balance + req.amount
+    enc_receiver = cu.aes_encrypt(SERVER_BALANCE_KEY, str(new_receiver_balance).encode())
+    db.update_balance(conn, receiver["id"], enc_receiver["nonce"], enc_receiver["ciphertext"])
+
+    db.insert_transaction(conn, payload, status="success", description=req.description)
+
+    return TransactionResponse(
+        transaction_id=payload["transaction_id"], sender=current_user["username"], receiver=receiver["username"],
+        sender_id=current_user["id"], receiver_id=receiver["id"], amount=req.amount, description=req.description,
+        nonce=payload["nonce"], timestamp=payload["timestamp"], data_hash=payload["data_hash"],
+        signature=payload["signature"], status="SUCCESS", signature_valid=True, hash_valid=True,
+        replay_detected=False, hash=payload["data_hash"],
     )
 
 

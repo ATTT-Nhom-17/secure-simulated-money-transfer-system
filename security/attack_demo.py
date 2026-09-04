@@ -25,11 +25,19 @@ ALICE = f"alice_{_SUFFIX}"
 BOB = f"bob_{_SUFFIX}"
 
 
+ALICE_KEYS = {}
+BOB_KEYS = {}
+
+
 def ensure_demo_users():
-    """Dang ky moi alice_xxx / bob_xxx cho lan chay nay."""
-    for username, password, pin in [(ALICE, "alice123", "111111"), (BOB, "bob123", "222222")]:
+    """Dang ky moi alice_xxx / bob_xxx cho lan chay nay, luu lai private key
+    (client) tra ve TU MOT LAN DUY NHAT luc dang ky - giong nhu app that se
+    luu private key trong secure storage cua nguoi dung, KHONG gui lai server."""
+    for username, password, pin, store in [(ALICE, "alice123", "111111", ALICE_KEYS), (BOB, "bob123", "222222", BOB_KEYS)]:
         r = requests.post(f"{BASE}/register", json={"username": username, "password": password, "pin": pin})
         r.raise_for_status()
+        store["private_key_pem"] = r.json()["private_key_pem"]
+        store["id"] = r.json()["id"]  # id so - phai dung ID nay khi ky, giong het server dung khi verify
 
 
 def line(title):
@@ -73,62 +81,67 @@ def demo_1_normal_transfer():
 
 
 # =====================================================================
+# Helper: CLIENT tu tao + ky payload (dung crypto_utils, private key CHI
+# client giu - khong gui private key len server o buoc nay)
+# =====================================================================
+def client_build_signed_payload(sender_id, receiver_id, amount, private_key_pem):
+    return cu.build_transaction_payload(sender_id, receiver_id, amount, private_key_pem)
+
+
+# =====================================================================
 # DEMO 2: MITM sua doi request tren duong truyen (attacker doi so tien)
+# Dung endpoint /transfer-signed: client da ky TRUOC KHI gui, server chi verify
 # =====================================================================
 def demo_2_mitm_http_tamper():
-    line("DEMO 2 (TAN CONG - tang HTTP): Attacker chan va sua 'amount' truoc khi toi server")
+    line("DEMO 2 (TAN CONG - tang HTTP, endpoint /transfer-signed): Attacker sua 'amount' sau khi da ky")
     token = login(ALICE, "alice123")
     bal_before = get_balance(token)
 
-    original_body = {"receiver_username": BOB, "amount": 100000, "pin": "111111", "description": "chuyen 100k"}
-    tampered_body = copy.deepcopy(original_body)
-    tampered_body["amount"] = 9000000  # attacker doi 100k -> 9 trieu
-    print("Request goc attacker chan duoc :", original_body)
-    print("Request sau khi attacker sua   :", tampered_body)
+    # CLIENT (alice) tu tao va ky giao dich THAT (100k) truoc khi gui di
+    payload = client_build_signed_payload(ALICE_KEYS["id"], BOB_KEYS["id"], 100000, ALICE_KEYS["private_key_pem"])
+    original_body = {**payload, "receiver_username": BOB, "pin": "111111", "description": "chuyen 100k"}
+    print("Request da duoc client ky (amount that = 100,000):")
+    print(f"  amount={payload['amount']}, data_hash={payload['data_hash'][:24]}...")
 
-    r = requests.post(
-        f"{BASE}/transfer",
-        headers={"Authorization": f"Bearer {token}"},
-        json=tampered_body,
-    )
+    tampered_body = copy.deepcopy(original_body)
+    tampered_body["amount"] = 9000000  # attacker doi 100k -> 9 trieu SAU KHI da ky
+    print("Attacker chan tren duong truyen va sua amount -> 9,000,000 (khong the ky lai vi khong co private key alice)")
+
+    r = requests.post(f"{BASE}/transfer-signed", headers={"Authorization": f"Bearer {token}"}, json=tampered_body)
     print("HTTP status:", r.status_code)
     print("Ket qua:", r.json())
     bal_after = get_balance(token)
-    print(f"So du alice: {bal_before:,} -> {bal_after:,} VND")
+    print(f"So du alice: {bal_before:,} -> {bal_after:,} VND (khong doi neu bi chan dung)")
 
-    print("\n[NHAN XET] O kien truc hien tai, transaction_id/nonce/signature duoc SERVER tu sinh")
-    print("SAU KHI nhan request, tu chinh 'amount' ma attacker da sua - nen server ky dung so")
-    print("tien attacker gui, KHONG phat hien duoc tampering o tang HTTP nay. Day la ly do bat")
-    print("buoc PHAI dung HTTPS/TLS cho kenh client-server; chu ky RSA trong do an nay bao ve")
-    print("tinh toan ven CUA BAN GHI GIAO DICH SAU KHI da duoc tao (audit trail), khong thay the")
-    print("cho TLS o tang van chuyen. Xem DEMO 4 de thay dung cach chu ky phat hien tampering.")
+    print("\n[NHAN XET] Vi transaction_id/nonce/timestamp/data_hash/signature da duoc CLIENT")
+    print("(alice) tao va ky TRUOC KHI request roi khoi may, attacker sua 'amount' tren duong")
+    print("truyen lam data_hash khong con khop voi noi dung moi -> verify_transaction_payload()")
+    print("phat hien va tu choi NGAY BUOC DAU TIEN, truoc ca khi kiem tra PIN/so du.")
 
 
 # =====================================================================
-# DEMO 3: Replay - gui lai nguyen request HTTP da chan duoc
+# DEMO 3: Replay - gui lai nguyen request da ky (dung endpoint /transfer-signed)
 # =====================================================================
 def demo_3_http_replay():
-    line("DEMO 3 (TAN CONG - tang HTTP): Attacker gui lai (replay) nguyen request da chan duoc")
+    line("DEMO 3 (TAN CONG - tang HTTP, endpoint /transfer-signed): Attacker gui lai (replay) request da ky")
     token = login(ALICE, "alice123")
     bal_before = get_balance(token)
-    body = {"receiver_username": BOB, "amount": 200000, "pin": "111111", "description": "replay test"}
 
-    r1 = requests.post(f"{BASE}/transfer", headers={"Authorization": f"Bearer {token}"}, json=body)
+    payload = client_build_signed_payload(ALICE_KEYS["id"], BOB_KEYS["id"], 200000, ALICE_KEYS["private_key_pem"])
+    body = {**payload, "receiver_username": BOB, "pin": "111111", "description": "replay test"}
+
+    r1 = requests.post(f"{BASE}/transfer-signed", headers={"Authorization": f"Bearer {token}"}, json=body)
     print("Lan gui 1 (that):", r1.status_code, "- tx_id:", r1.json().get("transaction_id"))
 
-    r2 = requests.post(f"{BASE}/transfer", headers={"Authorization": f"Bearer {token}"}, json=body)
-    print("Lan gui 2 (attacker replay y nguyen):", r2.status_code, "- tx_id:", r2.json().get("transaction_id"))
+    r2 = requests.post(f"{BASE}/transfer-signed", headers={"Authorization": f"Bearer {token}"}, json=body)
+    print("Lan gui 2 (attacker bat lai va gui lai y nguyen):", r2.status_code, "-", r2.json().get("detail") or r2.json().get("transaction_id"))
 
     bal_after = get_balance(token)
-    print(f"So du alice: {bal_before:,} -> {bal_after:,} VND (bi tru 2 lan neu replay khong bi chan)")
+    print(f"So du alice: {bal_before:,} -> {bal_after:,} VND (chi tru 1 lan neu replay bi chan dung)")
 
-    print("\n[NHAN XET] NonceTracker chi chan duoc khi 2 lan verify dung CHUNG 1 nonce. O day")
-    print("nonce duoc SERVER SINH MOI trong build_transaction_payload() moi khi /transfer duoc")
-    print("goi, nen 2 request giong het nhau van tao ra 2 giao dich HOP LE khac nhau -> KHONG")
-    print("phai la 'replay bi chan', ma la 2 giao dich that su khac nhau ve mat he thong.")
-    print("Co che chong-replay hien co bao ve dung thu: 'khong the phat lai 1 GIAO DICH DA KY'")
-    print("(xem DEMO 4). De chan duoc ca replay o tang HTTP, can them 1 idempotency-key do")
-    print("CLIENT sinh va gui kem request, server luu lai va tu choi request trung key.")
+    print("\n[NHAN XET] Vi nonce do CHINH CLIENT sinh ra va co dinh tu luc ky, request lap lai")
+    print("mang CUNG 1 nonce -> DBNonceTracker nhan ra nonce nay da duoc dung (tu lan gui dau)")
+    print("va tu choi ngay, KHONG tao them giao dich moi. Replay bi chan dung o ca tang HTTP.")
 
 
 # =====================================================================
